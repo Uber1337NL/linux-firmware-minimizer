@@ -7,7 +7,7 @@ Benodigde Linux packages (Alma/RHEL/CentOS):
 
 Voorbeelden:
     python3 firmware_minimize.py
-    python3 firmware_minimize.py --drivers-file andere_drivers.yaml --output-rpm custom-fw.rpm
+    python3 firmware_minimize.py --drivers-file drivers.yaml --output-rpm custom-fw.rpm
     python3 firmware_minimize.py --dry-run
 
 20140218 - Randy - github.com/Uber1337NL
