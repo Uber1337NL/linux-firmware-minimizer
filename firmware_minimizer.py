@@ -11,7 +11,7 @@ Voorbeelden:
     python3 firmware_minimize.py --dry-run
 
 20140218 - Randy - github.com/Uber1337NL
-Refactor 2026 when moving fromn internal repo to GitHub
+20260226 - Refactor LLM when moving fromn internal repo to GitHub
 """
 
 from __future__ import annotations
