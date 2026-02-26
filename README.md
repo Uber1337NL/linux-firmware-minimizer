@@ -13,7 +13,7 @@ Afterwards, update the initisal rpm (COMPANY-custom.rpm). Update the version and
 
 Exclude linux-firmware in your dnf.conf (exclude=linux-firmware-20*).
 
-Add linux-firmware-custom.noarch to your repository.
+Add linux-firmware-<date<.noarch to your repository.
 
 Your custom file will be downloaded ad kernel dependacy instead. But.. keep in mind this package is unsigned. 
 
