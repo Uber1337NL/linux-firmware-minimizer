@@ -2,7 +2,7 @@ Why download 600+ Mb every other month with firmware and kernel drivers if you o
 - Download the latest linux-firmware.noarch.rpp
 - Unpack it
 - Lookup the json file and keel the drivers you want
-- Re-pack it in an usualy sinle digit Mb ROP
+- Re-pack it in an usualy sinle digit Mb rpm.
 - Put it in your custom repo and distrinute it.
 
 ** Howto: 
