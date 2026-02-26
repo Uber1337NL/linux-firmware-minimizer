@@ -9,7 +9,11 @@ Howto:
 In your custom repo, create an empty RPM. The sole purpose of this RPM is to put dependacies on it. This RPM needs to be installed on all systems one time only. 
 
 Afterwards, update the initisal rpm (COMPANY-custom.rpm). Update the version and add dependacies. 
-Exclude linux-firmware in your dnf.conf (exclude=linux-firmware-20*)
-Add linux-firmware-custom.noarch to your repository
+
+Exclude linux-firmware in your dnf.conf (exclude=linux-firmware-20*).
+
+Add linux-firmware-custom.noarch to your repository.
+
 Your custom file will be downloaded ad kernel dependacy instead. But.. keep in mind this package is unsigned. 
+
 Or disable gpgchecks (Would not advise this) Or sign it yourself. Keep in mind your public PGP key needs to be known on the systems. See the first steps when installing your COMPANY-custom package initial. 
