@@ -5,7 +5,8 @@ Why download 600+ Mb every other month with firmware and kernel drivers if you o
 - Re-pack it in an usualy sinle digit Mb ROP
 - Put it in your custom repo and distrinute it.
 
-Howto: 
+** Howto: 
+
 In your custom repo, create an empty RPM. The sole purpose of this RPM is to put dependacies on it. This RPM needs to be installed on all systems one time only. 
 
 Afterwards, update the initisal rpm (COMPANY-custom.rpm). Update the version and add dependacies. 
