@@ -1,40 +1,47 @@
 #!/usr/bin/env python3
 """
-Script om een compacte linux-firmware RPM te maken met alleen de benodigde drivers.
+Script to create a minimal linux-firmware RPM containing only the needed drivers.
 
-Benodigde Linux packages (Alma/RHEL/CentOS):
+Required Linux packages (Alma/RHEL/CentOS):
     dnf install python3-pyyaml rpm-build rpmdevtools
 
-Voorbeelden:
-    python3 firmware_minimize.py
-    python3 firmware_minimize.py --drivers-file drivers.yaml --output-rpm custom-fw.rpm
-    python3 firmware_minimize.py --dry-run
+Examples:
+    python3 firmware_minimizer.py
+    python3 firmware_minimizer.py --drivers-file drivers.yaml --output-rpm custom-fw.rpm
+    python3 firmware_minimizer.py --dry-run
 
-20140218 - Randy - github.com/Uber1337NL
-20260226 - Refactor LLM when moving fromn internal repo to GitHub
+Author: Randy ten Have - github.com/Uber1337NL
+Version: 202603041631
+
+Changelog:
+2015mmdd - Oldtimer script found in internal repo when cleaning up.
+20260226 - Refactor to newer Python when moving from internal repo to GitHub
+20260304 - Added timestamp to Release for unique builds, translated to English.
+           Also added more error handling and a dry-run mode.
 """
 
 from __future__ import annotations
 
-import sys
-import subprocess
-import tempfile
-import re
 import argparse
+from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
-from typing import List, Sequence
+import re
+import subprocess
+import sys
+import tempfile
 
 import yaml
 
 
 class FirmwareMinimizerError(Exception):
-    """Custom exceptie voor fouten in de firmware minimizer."""
+    """Custom exception for errors in the firmware minimizer."""
 
 
-def run_command(cmd: Sequence[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
-    """
-    Run a shell command and raise FirmwareMinimizerError on failure.
-    """
+def run_command(
+    cmd: Sequence[str], cwd: Path | None = None
+) -> subprocess.CompletedProcess:
+    """Run a shell command and raise FirmwareMinimizerError on failure."""
     try:
         result = subprocess.run(
             cmd,
@@ -46,7 +53,7 @@ def run_command(cmd: Sequence[str], cwd: Path | None = None) -> subprocess.Compl
         return result
     except subprocess.CalledProcessError as e:
         msg = [
-            f"Commando mislukt: {' '.join(cmd)}",
+            f"Command failed: {' '.join(cmd)}",
             f"Exit code: {e.returncode}",
         ]
         if e.stdout:
@@ -57,10 +64,8 @@ def run_command(cmd: Sequence[str], cwd: Path | None = None) -> subprocess.Compl
 
 
 def download_latest_firmware_rpm(download_dir: Path) -> Path:
-    """
-    Download de laatste linux-firmware RPM van de repo met dnf.
-    """
-    print("Zoeken naar laatste linux-firmware RPM...")
+    """Download the latest linux-firmware RPM from the repo using dnf."""
+    print("Searching for the latest linux-firmware RPM...")
 
     run_command(
         [
@@ -75,43 +80,41 @@ def download_latest_firmware_rpm(download_dir: Path) -> Path:
 
     rpm_files = sorted(download_dir.glob("linux-firmware-*.rpm"))
     if not rpm_files:
-        raise FirmwareMinimizerError("Geen linux-firmware RPM bestand gevonden in download directory.")
+        raise FirmwareMinimizerError(
+            "No linux-firmware RPM file found in download directory."
+        )
 
     rpm_path = rpm_files[0]
-    print(f"Gedownload: {rpm_path}")
+    print(f"Downloaded: {rpm_path}")
     return rpm_path
 
 
-def read_drivers_yaml(yaml_file: Path) -> List[str]:
-    """
-    Lees de drivers.yaml file met te behouden modules.
-    """
-    print(f"Lezen van {yaml_file}...")
+def read_drivers_yaml(yaml_file: Path) -> list[str]:
+    """Read the drivers.yaml file with the drivers to keep."""
+    print(f"Reading {yaml_file}...")
 
     if not yaml_file.exists():
-        raise FirmwareMinimizerError(f"{yaml_file} niet gevonden.")
+        raise FirmwareMinimizerError(f"{yaml_file} not found.")
 
     try:
         with yaml_file.open("r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
     except yaml.YAMLError as e:
-        raise FirmwareMinimizerError(f"Fout bij parsen van YAML: {e}") from e
+        raise FirmwareMinimizerError(f"Error parsing YAML: {e}") from e
 
     drivers = config.get("drivers", [])
     if not isinstance(drivers, list):
-        raise FirmwareMinimizerError("drivers.yaml: 'drivers' moet een lijst zijn.")
+        raise FirmwareMinimizerError("drivers.yaml: 'drivers' must be a list.")
 
-    print(f"Gevonden {len(drivers)} drivers om te behouden")
+    print(f"Found {len(drivers)} drivers to keep")
     return [str(d) for d in drivers]
 
 
 def extract_rpm(rpm_file: Path, extract_dir: Path) -> None:
-    """
-    Extraheer de RPM naar een tijdelijke directory.
-    """
-    print(f"Extraheren van RPM naar {extract_dir}...")
+    """Extract the RPM to a temporary directory."""
+    print(f"Extracting RPM to {extract_dir}...")
 
-    # Gebruik rpm2cpio en cpio om te extraheren
+    # Use rpm2cpio and cpio to extract
     try:
         rpm2cpio = subprocess.Popen(
             ["rpm2cpio", str(rpm_file)],
@@ -125,21 +128,30 @@ def extract_rpm(rpm_file: Path, extract_dir: Path) -> None:
             text=True,
             check=True,
         )
+        if rpm2cpio.stdout is not None:
+            rpm2cpio.stdout.close()
         rpm2cpio.wait()
+        if rpm2cpio.returncode != 0:
+            raise FirmwareMinimizerError(
+                f"rpm2cpio failed with return code {rpm2cpio.returncode}"
+            )
     except subprocess.CalledProcessError as e:
-        raise FirmwareMinimizerError(f"Fout bij extraheren van RPM: {e}") from e
+        raise FirmwareMinimizerError(f"Error extracting RPM: {e}") from e
     except OSError as e:
-        raise FirmwareMinimizerError(f"Fout bij uitvoeren van rpm2cpio/cpio: {e}") from e
+        raise FirmwareMinimizerError(f"Error executing rpm2cpio/cpio: {e}") from e
 
-    print("Extractie voltooid")
+    print("Extraction completed")
 
 
-def _compile_patterns(drivers_to_keep: Sequence[str]) -> List[re.Pattern]:
+def _compile_patterns(
+    drivers_to_keep: Sequence[str],
+) -> list[re.Pattern]:
     """
-    Converteer driver patronen met wildcards naar regex patronen,
-    gematcht tegen het relative path (string). Patterns worden geankerd (^...$).
+    Convert driver patterns with wildcards to regex patterns,.
+
+    matched against the relative path (string). Patterns are anchored (^...$).
     """
-    patterns: List[re.Pattern] = []
+    patterns: list[re.Pattern] = []
     for driver in drivers_to_keep:
         pattern_str = re.escape(driver)
         pattern_str = pattern_str.replace(r"\*", ".*").replace(r"\?", ".")
@@ -154,15 +166,21 @@ def filter_firmware_files(
     dry_run: bool = False,
 ) -> None:
     """
-    Verwijder alle firmware bestanden behalve de opgegeven drivers.
+    Remove all firmware files except the specified drivers.
 
-    Bij dry_run worden geen bestanden daadwerkelijk verwijderd.
+    In dry_run mode, no files are actually removed.
     """
-    print("Filteren van firmware bestanden...")
+    print("Filtering firmware files...")
 
-    firmware_dir = extract_dir / "lib" / "firmware"
-    if not firmware_dir.exists():
-        raise FirmwareMinimizerError(f"Firmware directory niet gevonden: {firmware_dir}")
+    # Find the firmware directory, it might be lib/firmware or usr/lib/firmware
+    firmware_dir = None
+    for candidate in extract_dir.rglob("firmware"):
+        if candidate.is_dir():
+            firmware_dir = candidate
+            break
+
+    if firmware_dir is None:
+        raise FirmwareMinimizerError(f"Firmware directory not found in {extract_dir}")
 
     patterns = _compile_patterns(drivers_to_keep)
 
@@ -176,7 +194,11 @@ def filter_firmware_files(
         relative_path = item.relative_to(firmware_dir)
         rel_str = str(relative_path)
 
-        keep = any(p.search(rel_str) for p in patterns)
+        keep = False
+        for p in patterns:
+            if p.search(rel_str):
+                keep = True
+                break
 
         if keep:
             kept_files.append(relative_path)
@@ -185,95 +207,125 @@ def filter_firmware_files(
             if not dry_run:
                 item.unlink()
 
-    print(f"Behouden: {len(kept_files)} bestanden")
-    print(f"Te verwijderen: {len(removed_files)} bestanden")
+    print(f"Kept: {len(kept_files)} files")
+    print(f"Removed: {len(removed_files)} files")
 
     if dry_run:
-        print("\nDry-run modus: er zijn geen bestanden verwijderd.")
+        print("\nDry-run mode: no files were actually removed.")
     else:
-        # Verwijder lege directories (bottom-up)
+        # Remove empty directories (bottom-up)
         for dir_path in sorted(firmware_dir.rglob("*"), reverse=True):
             if dir_path.is_dir() and not any(dir_path.iterdir()):
                 dir_path.rmdir()
 
-    # Voor extra inzicht kun je desgewenst de lijsten tonen:
-    # print("\nBehouden bestanden:")
-    # for p in kept_files:
-    #     print(f"  {p}")
-    # print("\nVerwijderde bestanden:")
-    # for p in removed_files:
-    #     print(f"  {p}")
+    # For additional insight, you can optionally display the lists:
+    print("\nKept files:")
+    for p in kept_files:
+        print(f"  {p}")
+    print("\nRemoved files:")
+    for p in removed_files:
+        print(f"  {p}")
 
 
-def _generate_spec_content(version: str, extract_dir: Path) -> str:
-    """Genereer de inhoud van het RPM spec-bestand."""
-    date_str = subprocess.check_output(["date", "+%a %b %d %Y"]).decode().strip()
+def _get_timestamp() -> str:
+    """Generate a timestamp for the Release tag."""
+    return datetime.now().strftime("%Y%m%d%H%M")
 
-    return f"""Name:           linux-firmware-minimal
+
+def _generate_spec_content(version: str, extract_dir: Path, release: str) -> str:
+    """Generate the content of the RPM spec file."""
+    date_str = datetime.now().strftime("%a %b %d %Y")
+
+    # Detect whether firmware lives under lib/firmware or usr/lib/firmware
+    if (extract_dir / "usr" / "lib" / "firmware").is_dir():
+        firmware_files_entry = "/usr/lib/firmware"
+    else:
+        firmware_files_entry = "/lib/firmware"
+
+    return f"""%define _build_id_links none
+%global debug_package %{{nil}}
+%define __spec_install_pre /bin/true
+%define _unpackaged_files_terminate_build 0
+
+Name:           linux-firmware-minimal
 Version:        {version}
-Release:        1%{{?dist}}
-Summary:        Minimale Linux firmware met alleen benodigde drivers
+Release:        {release}%{{?dist}}
+Summary:        Minimal Linux firmware with only needed drivers
 License:        Redistributable, no modification permitted
 URL:            https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 BuildArch:      noarch
 
 %description
-Minimale versie van linux-firmware met alleen de benodigde drivers.
+Minimal version of linux-firmware with only the needed drivers.
 
 %prep
 
 %build
 
 %install
-mkdir -p %{{buildroot}}
-cp -a {extract_dir}/* %{{buildroot}}/
+/bin/true
 
 %files
-/lib/firmware
+{firmware_files_entry}
+%license /usr/share/licenses/linux-firmware/*
+%doc /usr/share/doc/linux-firmware/*
 
 %changelog
-* {date_str} Builder <builder@localhost> - {version}-1
-- Minimale firmware build
+* {date_str} Builder <builder@localhost> - {version}-{release}
+- Minimal firmware build with timestamp release
 """
 
 
-def create_rpm(extract_dir: Path, output_rpm: Path, version: str = "1.0") -> Path:
-    """
-    Maak een nieuwe RPM van de gefilterde bestanden.
-
-    Probeert eerst rpmbuild, valt terug op fpm indien rpmbuild faalt.
-    """
-    print("Maken van nieuwe RPM...")
+def create_rpm(
+    extract_dir: Path,
+    output_rpm: Path,
+    version: str = "1.0",
+    firmware_dir: str = "lib/firmware",
+) -> Path:
+    """Create a new RPM from the filtered files."""
+    print("Creating new RPM...")
 
     build_root = extract_dir
     spec_file = extract_dir.parent / "linux-firmware-minimal.spec"
     rpm_output_dir = Path.home() / "rpmbuild" / "RPMS"
 
-    # Schrijf spec file
-    spec_content = _generate_spec_content(version, extract_dir)
+    release = _get_timestamp()
+
+    # Write spec file
+    spec_content = _generate_spec_content(version, extract_dir, release)
     spec_file.write_text(spec_content, encoding="utf-8")
 
-    # Probeer rpmbuild
+    # Try rpmbuild
     try:
-        run_command(["rpmbuild", "-bb", "--buildroot", str(build_root), str(spec_file)])
+        run_command(
+            [
+                "rpmbuild",
+                "-bb",
+                "--buildroot",
+                str(build_root),
+                str(spec_file),
+            ]
+        )
 
-        # Probeer de nieuwste gegenereerde RPM te vinden in rpmbuild/RPMS
+        # Try to find the latest generated RPM in rpmbuild/RPMS
         if rpm_output_dir.exists():
             built_rpms = sorted(rpm_output_dir.rglob("linux-firmware-minimal-*.rpm"))
             if built_rpms:
                 rpm_path = built_rpms[-1]
-                print(f"RPM succesvol gemaakt met rpmbuild: {rpm_path}")
+                print(f"RPM successfully created with rpmbuild: {rpm_path}")
                 return rpm_path
 
-        print("rpmbuild lijkt voltooid, maar geen RPM gevonden in rpmbuild/RPMS. "
-              "Controleer handmatig.")
+        print(
+            "rpmbuild seems to have completed, but no RPM found in rpmbuild/RPMS. "
+            "Please check manually."
+        )
         return output_rpm
 
     except FirmwareMinimizerError as e:
-        print(f"Fout bij maken RPM met rpmbuild:\n{e}")
-        print("Probeer fpm als fallback (gem install fpm)...")
+        print(f"Error creating RPM with rpmbuild:\n{e}")
+        print("Trying fpm as a fallback (gem install fpm)...")
 
-    # Fallback naar fpm
+    # Fallback to fpm
     try:
         run_command(
             [
@@ -286,27 +338,29 @@ def create_rpm(extract_dir: Path, output_rpm: Path, version: str = "1.0") -> Pat
                 "linux-firmware-minimal",
                 "-v",
                 version,
+                "--iteration",
+                release,
                 "--prefix",
                 "/",
                 "-C",
                 str(extract_dir),
                 "-p",
                 str(output_rpm),
-                "lib/firmware",
+                firmware_dir,
             ]
         )
-        print(f"RPM gemaakt met fpm: {output_rpm}")
+        print(f"RPM created with fpm: {output_rpm}")
         return output_rpm
     except FirmwareMinimizerError as e:
         raise FirmwareMinimizerError(
-            "Kon geen RPM maken met rpmbuild of fpm. "
-            "Installeer eventueel fpm: gem install fpm"
+            "Could not create RPM with rpmbuild or fpm. "
+            "Consider installing fpm: gem install fpm"
         ) from e
 
 
 def print_missing_yaml_help(yaml_name: str = "drivers.yaml") -> None:
-    """Geef voorbeeldconfiguratie weer als drivers.yaml ontbreekt."""
-    print(f"Maak eerst een {yaml_name} bestand met deze structuur:")
+    """Display example configuration if drivers.yaml is missing."""
+    print(f"First, create a {yaml_name} file with this structure:")
     print(
         """
 drivers:
@@ -321,9 +375,9 @@ drivers:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parseer command line argumenten."""
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Maak een minimale linux-firmware RPM met alleen de benodigde drivers.",
+        description="Create a minimal linux-firmware RPM with only the necessary drivers.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -332,39 +386,39 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--drivers-file",
         type=Path,
         default=Path("drivers.yaml"),
-        help="YAML-bestand met drivers die behouden moeten blijven.",
+        help="YAML file with drivers to keep.",
     )
     parser.add_argument(
         "-o",
         "--output-rpm",
         type=Path,
         default=Path("linux-firmware-minimal.rpm"),
-        help="Pad/naam van de output RPM.",
+        help="Path/name of the output RPM.",
     )
     parser.add_argument(
         "-V",
         "--version",
         type=str,
         default="1.0",
-        help="Versienummer voor de RPM.",
+        help="Version number for the RPM.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Toon welke bestanden behouden/verwijderd zouden worden, "
-             "maar voer geen wijzigingen uit en bouw geen RPM.",
+        help="Show which files would be kept/removed, "
+        "but do not make any changes or build an RPM.",
     )
     parser.add_argument(
         "--keep-temp",
         action="store_true",
-        help="Bewaar de tijdelijke directory voor debug/inspectie.",
+        help="Keep the temporary directory for debugging/inspection.",
     )
 
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Hoofdfunctie."""
+    """Main function."""
     args = parse_args(argv)
 
     print("=== Linux Firmware RPM Minimizer ===\n")
@@ -383,17 +437,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     rpm_file: Path | None = None
     built_rpm: Path | None = None
 
+    # Create local temp base directory
+    temp_base = Path("./tmp")
+    temp_base.mkdir(parents=True, exist_ok=True)
+
     try:
         drivers_to_keep = read_drivers_yaml(yaml_file)
 
-        # Maak ofwel een tijdelijke directory, of gebruik er een die blijft bestaan
-        if keep_temp:
-            temp_dir_obj = tempfile.TemporaryDirectory()
-            temp_dir = Path(temp_dir_obj.name)
-            print(f"Tijdelijke directory (blijft bestaan): {temp_dir}")
-        else:
-            temp_dir_obj = tempfile.TemporaryDirectory()
-            temp_dir = Path(temp_dir_obj.name)
+        # Use local temp directory instead of system /tmp
+        temp_dir_obj = tempfile.TemporaryDirectory(
+            dir=str(temp_base), delete=not keep_temp
+        )
+        temp_dir = Path(temp_dir_obj.name)
 
         download_dir = temp_dir / "download"
         extract_dir = temp_dir / "extract"
@@ -405,37 +460,37 @@ def main(argv: Sequence[str] | None = None) -> None:
         filter_firmware_files(extract_dir, drivers_to_keep, dry_run=dry_run)
 
         if dry_run:
-            print("\nDry-run voltooid. Er is geen RPM gebouwd en er zijn geen bestanden verwijderd.")
+            print("\nDry-run completed. No RPM was built and no files were removed.")
             return
 
         built_rpm = create_rpm(extract_dir, desired_output_rpm, version=version)
 
-        print(f"\n✓ Klaar! Compacte RPM: {built_rpm}")
+        print(f"\n✓ Done! Compact RPM: {built_rpm}")
 
-        # Toon grootte vergelijking (indien bestanden bestaan)
+        # Show size comparison (if files exist)
         if rpm_file.exists() and built_rpm.exists():
             original_size_mb = rpm_file.stat().st_size / (1024 * 1024)
             new_size_mb = built_rpm.stat().st_size / (1024 * 1024)
 
-            print(f"Origineel: {original_size_mb:.1f} MB")
-            print(f"Nieuw:     {new_size_mb:.1f} MB")
+            print(f"Original: {original_size_mb:.1f} MB")
+            print(f"New:      {new_size_mb:.1f} MB")
             if original_size_mb > 0:
                 saving_mb = original_size_mb - new_size_mb
                 saving_pct = (1 - new_size_mb / original_size_mb) * 100
-                print(f"Besparing: {saving_mb:.1f} MB ({saving_pct:.1f}%)")
+                print(f"Saving:   {saving_mb:.1f} MB ({saving_pct:.1f}%)")
 
     except FirmwareMinimizerError as e:
-        print(f"\nFout: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\nAfgebroken door gebruiker.")
+        print("\nInterrupted by user.")
         sys.exit(1)
     finally:
-        # Ruim tijdelijke directory op, behalve als --keep-temp is gebruikt
+        # Clean up temporary directory, unless --keep-temp is used
         if temp_dir_obj is not None and not keep_temp:
             temp_dir_obj.cleanup()
         elif keep_temp and temp_dir_obj is not None:
-            print(f"Tijdelijke directory behouden: {temp_dir_obj.name}")
+            print(f"Temporary directory retained: {temp_dir_obj.name}")
 
 
 if __name__ == "__main__":
