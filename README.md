@@ -1,20 +1,141 @@
-Why download 600+ Mb every other month with firmware and kernel drivers if you only need the content of a Floppy disk with a handfull drivers. Or even a single one. In particular interesting for remote systems without broadband connection like LTE. What this sctipt does:
-- Download the latest linux-firmware.noarch.rpp
-- Unpack it
-- Lookup the json file and keel the drivers you want
-- Re-pack it in an usualy sinle digit Mb rpm.
-- Put it in your custom repo and distrinute it.
+# linux-firmware-minimal
 
-** Howto: 
+A Python script to build a minimal `linux-firmware` RPM containing only the firmware files needed for your specific hardware. Reduces the package size by up to 75% compared to the full `linux-firmware` package.
 
-In your custom repo, create an empty RPM. The sole purpose of this RPM is to put dependacies on it. This RPM needs to be installed on all systems one time only. 
+## Features
 
-Afterwards, update the initisal rpm (COMPANY-custom.rpm). Update the version and add dependacies. 
+- Automatically downloads the latest `linux-firmware` RPM from your configured DNF repositories
+- Filters firmware files based on a simple YAML configuration
+- Supports wildcard patterns (e.g. `iwlwifi-*`, `rtl_nic/*`)
+- Builds a proper RPM using `rpmbuild`, with `fpm` as fallback
+- Each build gets a unique timestamp-based `Release` tag (e.g. `1.0-202603041533.el10`) for clean `dnf update` support
+- Dry-run mode to preview which files would be kept or removed
+- Automatically detects firmware path (`/lib/firmware` or `/usr/lib/firmware`)
 
-Exclude linux-firmware in your dnf.conf (exclude=linux-firmware-20*).
+## Requirements
 
-Add linux-firmware-<date<.noarch to your repository.
+### System packages
 
-Your custom file will be downloaded ad kernel dependacy instead. But.. keep in mind this package is unsigned. 
+```bash
+dnf install python3-pyyaml rpm-build rpmdevtools
+```
 
-Or disable gpgchecks (Would not advise this) Or sign it yourself. Keep in mind your public PGP key needs to be known on the systems. See the first steps when installing your COMPANY-custom package initial. 
+### Python Virtual Environment (Optional)
+
+If you prefer not to install `python3-pyyaml` globally:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Optional (fallback RPM builder)
+
+```bash
+gem install fpm
+```
+
+## Installation
+
+```bash
+git clone https://github.com/Uber1337NL/linux-firmware-minimal
+cd linux-firmware-minimal
+chmod +x firmware_minimizer.py
+```
+
+## Configuration
+
+Create a `drivers.yaml` file in the same directory as the script. List the firmware files or patterns you want to keep:
+
+```yaml
+drivers:
+  - iwlwifi-*           # Intel WiFi drivers
+  - rtl_nic/*           # Realtek NIC firmware
+  - i915/*              # Intel GPU (iGPU)
+  - amdgpu/*            # AMD GPU
+  - nvidia/*            # NVIDIA GPU
+  - rtw88/*             # Realtek WiFi (rtw88)
+  - intel/ibt-*         # Intel Bluetooth
+  - qed/*               # Marvell/QLogic network
+  - bnx2/*              # Broadcom NetXtreme II
+```
+
+Patterns are matched against the relative path inside the firmware directory. Both `*` (any characters) and `?` (single character) wildcards are supported.
+
+## Usage
+
+### Basic usage
+
+```bash
+./firmware_minimizer.py
+```
+
+### All options
+
+```usage: firmware_minimizer.py [-h] [-d DRIVERS_FILE] [-o OUTPUT_RPM] [-V VERSION] [--dry-run] [--keep-temp]
+
+options:
+  -h, --help            Show this help message and exit
+  -d, --drivers-file    YAML file with drivers to keep (default: drivers.yaml)
+  -o, --output-rpm      Output RPM path/name (default: linux-firmware-minimal.rpm)
+  -V, --version         RPM version number (default: 1.0)
+  --dry-run             Preview which files would be kept/removed without making changes
+  --keep-temp           Keep the temporary directory for debugging/inspection
+```
+
+### Examples
+
+```bash
+# Standard build
+./firmware_minimizer.py
+
+# Preview without making changes
+./firmware_minimizer.py --dry-run
+
+# Custom drivers file and output name
+./firmware_minimizer.py --drivers-file my-server.yaml --output-rpm my-server-firmware.rpm
+
+# Keep temp directory for inspection after build
+./firmware_minimizer.py --keep-temp
+```
+
+## Output
+
+The built RPM is placed in `~/rpmbuild/RPMS/noarch/` and follows the naming convention:
+
+```linux-firmware-minimal-1.0-202603041533.el10.noarch.rpm
+```
+
+The `Release` tag is a timestamp (`YYYYMMDDHHMM`), ensuring every build is treated as newer by `dnf`. This allows seamless updates via:
+
+```bash
+dnf install ~/rpmbuild/RPMS/noarch/linux-firmware-minimal-*.rpm
+# or after adding to a local repo:
+dnf update linux-firmware-minimal
+```
+
+## Example results
+
+|                            | Size                |
+| -------------------------- | ------------------- |
+| Original `linux-firmware`  | 60.0 MB             |
+| Minimal build (12 drivers) | 14.6 MB             |
+| **Savings**                | **45.3 MB (75.6%)** |
+
+## Project structure
+
+```.
+├── firmware_minimizer.py   # Main script
+├── drivers.yaml            # Your driver configuration
+└── tmp/                    # Temporary build directory (auto-cleaned)
+```
+
+## Authors
+
+- **Randy** — Initial internal version (2014-02-18) — [github.com/Uber1337NL](https://github.com/Uber1337NL)
+- Refactored 2026-02-26 for public GitHub release. Updated to Python 3.12+ and translated om 20260304.
+
+## License
+
+The script itself is MIT licensed. The firmware files packaged by this tool are subject to their own respective licenses as included in `/usr/share/licenses/linux-firmware/`.
