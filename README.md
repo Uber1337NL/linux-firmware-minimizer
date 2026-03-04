@@ -136,4 +136,4 @@ dnf update linux-firmware-minimal
 
 ## License
 
-The script itself is AGPL-3.0 licensed. The firmware files packaged by this tool are subject to their own respective licenses as included in `/usr/share/licenses/linux-firmware/`.
+AGPL-3.0
