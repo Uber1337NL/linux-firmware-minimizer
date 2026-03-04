@@ -8,7 +8,7 @@ A Python script to build a minimal `linux-firmware` RPM containing only the firm
 - Filters firmware files based on a simple YAML configuration
 - Supports wildcard patterns (e.g. `iwlwifi-*`, `rtl_nic/*`)
 - Builds a proper RPM using `rpmbuild`, with `fpm` as fallback
-- Each build gets a unique timestamp-based `Release` tag (e.g. `1.0-202603041533.el10`) for clean `dnf update` support
+- Each build gets a unique timestamp-based `Release` tag (e.g. `1.0-202603041831.el10`) for clean `dnf update` support
 - Dry-run mode to preview which files would be kept or removed
 - Automatically detects firmware path (`/lib/firmware` or `/usr/lib/firmware`)
 
@@ -74,7 +74,6 @@ Patterns are matched against the relative path inside the firmware directory. Bo
 ### All options
 
 ```usage: firmware_minimizer.py [-h] [-d DRIVERS_FILE] [-o OUTPUT_RPM] [-V VERSION] [--dry-run] [--keep-temp]
-
 options:
   -h, --help            Show this help message and exit
   -d, --drivers-file    YAML file with drivers to keep (default: drivers.yaml)
@@ -104,8 +103,7 @@ options:
 
 The built RPM is placed in `~/rpmbuild/RPMS/noarch/` and follows the naming convention:
 
-```linux-firmware-minimal-1.0-202603041533.el10.noarch.rpm
-```
+```linux-firmware-minimal-1.0-202603041831.el10.noarch.rpm```
 
 The `Release` tag is a timestamp (`YYYYMMDDHHMM`), ensuring every build is treated as newer by `dnf`. This allows seamless updates via:
 
