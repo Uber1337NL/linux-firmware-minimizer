@@ -1,30 +1,31 @@
-# drivers.yaml - Lijst van firmware modules om te behouden
+---
+# drivers.yaml - List of firmware modules to keep
 
 drivers:
   # Intel WiFi drivers
-  - "iwlwifi-*"
-  
+  - 'iwlwifi-*'
+
   # Realtek network drivers
-  - "rtl_nic/*"
-  - "rtw88/*"
-  - "rtw89/*"
-  
+  - 'rtl_nic/*'
+  - 'rtw88/*'
+  - 'rtw89/*'
+
   # Intel graphics
-  - "i915/*"
-  
+  - 'i915/*'
+
   # AMD graphics
-  - "amdgpu/*"
-  - "radeon/*"
-  
-  # NVIDIA graphics (als je die gebruikt)
-  - "nvidia/*"
-  
+  - 'amdgpu/*'
+  - 'radeon/*'
+
+  # NVIDIA graphics (if user has NVIDIA hardware)
+  - 'nvidia/*'
+
   # Bluetooth
-  - "intel/ibt-*"
-  - "rtl_bt/*"
-  
+  - 'intel/ibt-*'
+  - 'rtl_bt/*'
+
   # Audio
-  - "intel/sof/*"
-  
+  - 'intel/sof/*'
+
   # USB devices
-  - "*.ucode"
+  - '*.ucode'
